@@ -1,0 +1,494 @@
+---
+title: "Tabular Data Static and Interactive Plots"
+author: Kagen Lim 
+output: 
+  html_document:
+    keep_md: true
+---
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+- Completed as Assignment 1 for QMSS GR5063 Data Visualization, Spring 2021
+- Contact: [kagen.lim@columbia.edu](mailto:kagen.lim@columbia.edu) 
+
+The dataset utilized in this assignment is the Astronauts Dataset [(Stavnichuk & Corlett, 2020)](https://data.mendeley.com/datasets/86tsnnbv2w/1) which contains publicly available information about the astronauts who participated in space missions before 15 January 2020. 
+
+The first three questions in this assignment are guided in terms of topic, in which I explore the Age, Sex, Nationality and Space Walk records (i.e., extravehicular explorations). The fourth one allows some room of exploration. In the fifth one, I introduce some interactive plots, and in the final question I explore an interactive data table. 
+
+First, I set up the libraries I need and load in my dataset:
+
+```{r libraries}
+#setting up relevant libraries#
+library(tidyverse)
+library(tibble)
+library(dplyr)
+library(ggplot2)
+library(plotly)
+library(ggpubr)
+library(extrafont)
+library(DT)
+```
+
+```{r Dataset}
+#setting up my dataset#
+
+df <- read.csv("astronauts.csv")
+
+colnames(df)
+
+glimpse(df)
+
+n_distinct(df$name) #564 means that astronauts performed multiple missions#
+
+n_distinct(df$id) #1277 means that this will be a good key value#
+```
+
+### 1. Age & Sex
+
+Visualize the information presented by the year of birth of astronauts. This could be their age when selected, their age during their first mission, or how old they were during their last mission (or all of these). This could also include who were the youngest or oldest astronauts, or which astronauts where active the longest. In addition, use the sex information on the astronauts for further differentiation.
+
+Create 2-3 charts in this section to highlight some important patterns. Make sure to use some variation in the type of visualizations. Briefly discuss which visualization you recommend to your editor and why.
+
+Discuss three specific design choices in these graphs that were influenced by your knowledge of the data visualization principles we discussed in the lectures.
+
+```{r Question 1 Preprocessing 1}
+df1 <- df %>%
+  group_by(name, number) %>%
+  mutate(age_selected = year_of_selection - year_of_birth, age_mission = year_of_mission - year_of_birth) %>% #create new vars#
+  filter(age_selected >= 0, age_mission >=0) #sanity check#
+
+glimpse(df1)
+
+unique(df1$occupation) #needs recoding, lots of overlap#
+
+#recodes#
+df1$occupation_new <- ifelse(df1$occupation == 'pilot', 'Pilot', df1$occupation)
+
+df1$occupation_new <- ifelse(df1$occupation_new == 'Other (Journalist)', 'Journalist', df1$occupation_new)
+
+df1$occupation_new <- ifelse(df1$occupation_new == 'Other (space tourist)', 'Space tourist', df1$occupation_new)
+
+df1$occupation_new <- ifelse(df1$occupation_new == 'Other (Space tourist)', 'Space tourist', df1$occupation_new)
+
+df1$occupation_new <- ifelse(df1$occupation_new == 'commander', 'Commander', df1$occupation_new)
+
+df1$occupation_new <- ifelse(df1$occupation_new == 'flight engineer', 'Flight engineer', df1$occupation_new)
+
+df1$occupation_new <- ifelse(df1$occupation_new == 'spaceflight participant', 'Spaceflight participant', df1$occupation_new)
+
+df1$occupation_new <- ifelse(df1$occupation_new == 'MSP', 'Mission specialist', df1$occupation_new)
+
+df1$occupation_new <- ifelse(df1$occupation_new == 'PSP', 'Payload specialist', df1$occupation_new)
+
+unique(df1$occupation_new) #much better#
+```
+
+```{r Question 1 Visualization 1}
+ggplot(df1) + 
+  geom_boxplot(aes(x = sex, y = age_mission)) +
+  coord_flip() + 
+  facet_wrap(~occupation_new) +
+  theme(panel.grid=element_line(colour="white"), panel.background = element_rect(fill="white")) + 
+  labs(
+    x = "Sex of Astronaut",
+    y = "Age of Astronaut during Space Mission",
+    title = "Sex Differences in Astronaut Age, by Occupation",
+    subtitle = "Source: Stavnichuk & Corlett, 2020"
+  ) + 
+  theme(text=element_text(family="Times New Roman", face="bold", size=12)) + 
+  theme(axis.text.x = element_text(face="bold", color="black", 
+                           size=8),
+          axis.text.y = element_text(face="bold", color="black", 
+                           size=8))
+```
+
+```{r Question 1 Preprocessing 2}
+df1_female <- df1 %>%
+  filter(sex == 'female')
+
+df1_male <- df1 %>%
+  filter(sex == 'male')
+```
+
+```{r Question 1 Visualization 2}
+ggplot(df1) + 
+  geom_jitter(aes(x = year_of_selection, y = age_selected, color = sex)) + 
+  scale_color_manual(labels = c("Female", "Male"), values=c("#CC79A7", "#0072B2")) + 
+  stat_smooth(mapping = aes(x = year_of_selection, y = age_selected), data = df1_male, method = 'lm', color = "#0072B2", formula = y~x, geom = 'line', alpha = 0.8, size = 3, se = FALSE) + 
+  stat_smooth(mapping = aes(x = year_of_selection, y = age_selected), data = df1_female, method = 'lm', colour = "#CC79A7", formula = y~x, geom = 'line', alpha = 0.8, size = 3, se = FALSE) +
+  theme(legend.position="top") + 
+  theme(panel.grid=element_line(colour="white"), panel.background = element_rect(fill="white")) + 
+    labs(
+    x = "Year that Astronaut was Selected for Space Training",
+    y = "Age of Astronaut at the Point of Selection",
+    color = "Sex of Astronaut",
+    title = "Male Astronauts Tend to be Older than Female Astronauts",
+    subtitle = "Source: Stavnichuk & Corlett, 2020"
+  ) + 
+  theme(text=element_text(family="Times New Roman", face="bold", size=12)) + 
+    theme(axis.text.x = element_text(face="bold", color="black", 
+                           size=8),
+          axis.text.y = element_text(face="bold", color="black", 
+                           size=8))
+```
+
+I recommend the second plot in this segment, the scatter plot titled `Male Astronauts Tend to be Older than Female Astronauts` to the editor. I believe that this plot clearly conveys a single point -- male astronauts tend to be older than female astronauts, and this effect seems to have held true over time. This insight is succinctly captured in the title. The two linear regression lines, associated with a male astronauts subset of the dataset (in blue, following the color scheme) and with female astronauts subset of the dataset (in pink, following the color scheme) respectively, clearly conveys this single point too. 
+
+My Graphs in this section reflect some Gestalt principles.
+
+Graph 2 most clearly reflects the principle of similarity through the color choice. The blue dots represent one group (male) and the pink dots represent one group (female). It also displays the principle of continuity, with the use of the two regression lines to imply that the two groups indeed have different trajectories.
+
+Graph 1 employs a `facet_wrap()`, with the conscious application of the Gestalt principle of proximity. Boxplots appeared under clearly labelled headers, throughout the graph, so the user knows which boxplot represents which category. 
+
+### 2. Nationality 
+
+For a long time, space exploration was a duel between two superpowers. But recently, other nations have entered the game as well. Use the information on the nationality of the astronauts to visualize some interesting patterns. Consider, for example, that the composition of shuttle missions has recently become mixed nationalities, something that was absent in earlier times.
+
+Create 1-2 charts in this section to highlight the information on nationality. Make sure to use some variation in the type of visualizations. Briefly discuss which visualization you recommend to your editor and why.
+
+```{r Question 2 Preprocessing 1}
+unique(df$nationality) #there are quite a number#
+
+#Subsetting to the top 5 only!#
+nationality_top5_count <- df %>%
+  group_by(nationality) %>%
+  tally(sort = TRUE) %>%
+  top_n(5)
+
+nationality_top5 <- df %>% 
+  filter(nationality %in% nationality_top5_count$nationality)
+
+glimpse(nationality_top5) #quite a number captured by top_10. 1240 observations, so we are getting quite a fair bit of the information just by the top_10#
+```
+
+```{r Question 2 Visualization 1}
+military_civilian = ggplot(nationality_top5) + 
+  geom_point(aes(x = year_of_mission, y = nationality, colour = military_civilian), position = position_dodge(width = 0.5)) + 
+  scale_color_manual(labels = c("Civilian", "Military"), values=c("#CC79A7", "#0072B2")) + 
+  theme(legend.position="top")  + 
+  theme(panel.grid=element_line(colour="white"), panel.background = element_rect(fill="white")) +
+     labs(
+    x = "Year of Astronaut's Space Mission",
+    y = "Nationality of Astronaut",
+    color = "Mission Type",
+    title = "US & Russia - Highest Number of Military/Civilian Astronauts",
+    subtitle = "Source: Stavnichuk & Corlett, 2020",
+    caption = "Note: The five countries presented here are the Top 5 Space Exploring Countries."
+  ) + 
+  theme(text=element_text(family = "Times", face="bold", size=12)) + 
+    theme(axis.text.x = element_text(face="bold", color="black", 
+                           size=8),
+          axis.text.y = element_text(face="bold", color="black", 
+                           size=8))
+
+military_civilian
+```
+
+```{r Question 2 Preprocessing 2}
+#Subsetting to the top 5, non US, Russia, only#
+nationality_nonsuper_top5_count <- df %>%
+  group_by(nationality) %>%
+  tally(sort = TRUE) %>%
+  top_n(7) %>%
+  filter(!nationality %in% c('U.S.', 'U.S.S.R/Russia')) #not one of the two big superpowers for space exploration#
+
+glimpse(nationality_nonsuper_top5_count) #still quite a number captured by top_5. 1183 observations, so we are getting quite a fair bit of the information just by the top_5#
+
+#Grouping by Decade#
+nationality_nonsuper_top5_number_decade <- df %>%
+  filter(nationality %in% nationality_nonsuper_top5_count$nationality) %>%
+  mutate(decade = floor(year_of_mission/10)*10) %>%
+  group_by(decade, nationality) %>%
+  dplyr::summarize(astronaut_trips = n())
+
+nationality_super_number_decade <- df %>%
+  filter(nationality %in% c('U.S.', 'U.S.S.R/Russia')) %>%
+  mutate(decade = floor(year_of_mission/10)*10) %>%
+  group_by(decade, nationality) %>%
+  dplyr::summarize(astronaut_trips = n())
+```
+
+```{r Question 2 Visualization 2}
+super = ggplot(nationality_super_number_decade) + 
+  geom_col(aes(x = decade, y = astronaut_trips,fill=nationality)) + 
+  labs(
+    x = "Year of Astronaut's Space Mission",
+    y = "Number of Astronauts sent to Space",
+    subtitle = "Top Two Space Exploring Countries",
+    fill = "Nationality of Astronauts") +
+  theme(panel.grid=element_line(colour="white"), panel.background = element_rect(fill="white")) + 
+  theme(text=element_text(face="bold", size=8)) + 
+      theme(axis.text.x = element_text(face="bold", color="black", 
+                           size=8),
+          axis.text.y = element_text(face="bold", color="black", 
+                           size=8))
+
+non_super = ggplot(nationality_nonsuper_top5_number_decade) + 
+  geom_col(aes(x = decade, y = astronaut_trips,fill=nationality)) + 
+    labs(
+    x = "Year of Astronaut's Space Mission",
+    y = "Number of Astronauts sent to Space",
+    subtitle = "Next Five Top Space Exploring Countries",
+    fill = "Nationality of Astronauts") +
+  theme(panel.grid=element_line(colour="white"), panel.background = element_rect(fill="white")) + 
+  theme(text=element_text(face="bold", size=8)) + 
+      theme(axis.text.x = element_text(face="bold", color="black", 
+                           size=8),
+          axis.text.y = element_text(face="bold", color="black", 
+                           size=8))
+#Add color#
+
+combined = ggarrange(super, non_super, ncol = 1)
+
+title <- expression(atop(bold("Top Seven Space Exploring Countries"), scriptstyle(bold("Source: Stavnichuk & Corlett, 2020"))))
+annotate_figure(combined,
+                top=text_grob(title), fig.lab.face = "bold")
+```
+
+I recommend the first plot in this segment, the scatter plot titled `America & Russia have Highest Number of Military/Civilian Astronauts` to the editor. I believe that this plot clearly does justice to the data, since the raw data is fully displayed. The segmentation, both by color and by a totally separate but adjacent row of points,  into military and civilian groups makes this point extremely clear. And in this case, this helps to convey the point -- America and Russia not only have the most number of astronauts who have been to space, they lead in sending astronauts on both military and civilian missions. This effect holds even now, when countries Japan, France and Canada are also catching up. This insight is succinctly captured in the title too.
+
+### 3. Space walks 
+
+Space walks, or extravehicular activities, are often the highlight of these missions. Wrangle the data to create an overview of cumulative spacewalk records of individual astronauts (i.e. calculate the number and total duration of EVA by astronaut).
+
+Create 1-2 charts in this section to highlight some important patterns. Make sure to use some variation in the type of visualizations. Briefly discuss which visualization you recommend to your editor and why.
+
+```{r Question 3 Preprocessing}
+df3 <- df %>%
+  group_by(number, name) %>%
+  mutate(number_spacewalk = eva_instances, duration_spacewalk = total_eva_hrs)
+
+#Subsetting to the top 5 only!#
+nationality_top5_count_3 <- df3 %>%
+  group_by(nationality) %>%
+  tally(sort = TRUE) %>%
+  top_n(5)
+
+nationality_top5_3 <- df3 %>% 
+  filter(nationality %in% nationality_top5_count_3$nationality)
+
+#Subsetting to the top 10 only!#
+nationality_top10_count_3 <- df3 %>%
+  group_by(nationality) %>%
+  tally(sort = TRUE) %>%
+  top_n(10)
+
+nationality_top10_3 <- df3 %>% 
+  filter(nationality %in% nationality_top10_count_3$nationality)
+```
+
+
+
+```{r Question 3 Visualization 1}
+ggplot(nationality_top5_3) + 
+  geom_jitter(aes(x = duration_spacewalk, y = nationality, color = number_spacewalk)) + 
+  scale_color_gradient(low = "#0072B2", high = "#CC79A7") + 
+  theme(legend.position="top") +
+  theme(panel.grid=element_line(colour="white"), panel.background = element_rect(fill="white")) +
+  coord_flip() + 
+     labs(
+    x = "Total Duration of Spacewalk in Space Career (Hrs)",
+    y = "Nationality of Astronaut",
+    color = "Total Number of Spacewalks in Entire Space Career",
+    title = "US & Russian Astronauts Take More (and Longer) Spacewalks",
+    subtitle = "Source: Stavnichuk & Corlett, 2020",
+    caption = "Note: The five countries presented here are the Top 5 Space Exploring Countries."
+  ) + 
+  theme(text=element_text(family="Times New Roman", face="bold", size=12)) + 
+    theme(axis.text.x = element_text(face="bold", color="black", 
+                           size=8),
+          axis.text.y = element_text(face="bold", color="black", 
+                           size=8))
+```
+
+```{r Question 3 Visualization 2}
+ggplot(nationality_top10_3) + 
+  geom_tile(aes(x = year_of_mission, y = nationality, fill = number_spacewalk)) +
+  scale_fill_gradient(low = "#0072B2", high = "#CC79A7") + 
+  theme(legend.position="top") +
+  theme(panel.background=element_rect(fill="#0072B2"), panel.grid=element_line(colour="#0072B2")) + 
+       labs(
+    x = "Year of Astronaut's Mission",
+    y = "Nationality of Astronaut",
+    fill = "Total Number of Spacewalks in Entire Space Career ",
+    title = "US & Russian Astronauts Take More (and Longer) Spacewalks",
+    subtitle = "Source: Stavnichuk & Corlett, 2020",
+    caption = "Note: The five countries presented here are the Top 5 Space Exploring Countries."
+  ) + 
+  theme(text=element_text(family="Times New Roman", face="bold", size=12)) + 
+    theme(axis.text.x = element_text(face="bold", color="black", 
+                           size=8),
+          axis.text.y = element_text(face="bold", color="black", 
+                           size=8))
+```
+
+I recommend the second plot in this segment, the heatmap titled `American & Russian Astronauts Take More (and Longer) Spacewalks` to the editor. 
+
+I believe that this plot format enables the reader to have a broader overview of more countries, other than America and Russia, as the heatmap captures much of the information by differences in color. In addition to that, it also communicates a clear point by color - the number of spacewalks covered per country, along with when these spacewalks happened. It clearly shows peaks in spacewalks for the USSR somewhere in the early to mid 1990s, and how non US/Russia countries had more spacewealks in the second half of the heatmap's time frame, after 1990. This should be easy to read for a lay person.
+
+### 4. Independent Exploration
+
+```{r Question 4 Preprocessing}
+df4 <- df %>%
+  group_by(number) %>%
+  mutate(number_spacewalk = eva_instances, duration_spacewalk = total_eva_hrs, age_mission = year_of_mission - year_of_birth) %>% #create new vars#
+  filter(age_mission >= 0)  #sanity check#
+
+nationality_top6_count_4 <- df4 %>%
+  group_by(nationality) %>%
+  tally(sort = TRUE) %>%
+  top_n(6)
+
+nationality_top6_4 <- df4 %>% 
+  filter(nationality %in% nationality_top6_count_4$nationality)
+
+nationality_top9_count_4 <- df4 %>%
+  group_by(nationality) %>%
+  tally(sort = TRUE) %>%
+  top_n(9)
+
+nationality_top9_4 <- df4 %>% 
+  filter(nationality %in% nationality_top9_count_4$nationality)
+```
+
+```{r Question 4 Visualization 1}
+ggplot(nationality_top6_4) + 
+  geom_col(position = position_dodge(width=1), aes(x = military_civilian, y = duration_spacewalk), fill = "#0072B2") +
+  geom_point(position = position_dodge(width=1), aes(x = military_civilian, y = duration_spacewalk), color ="#CC79A7") +
+  facet_wrap(~nationality) + 
+  theme(panel.grid=element_line(colour="white"), panel.background = element_rect(fill="white")) +
+  scale_x_discrete(breaks=c("military", "civilian"),
+                      labels=c("Military", "Civilian")) + 
+    coord_flip() + 
+     labs(
+    x = "Mission Type",
+    y = "Total Duration of Spacewalks in Entire Space Career",
+    title = "US & Russian Military/Civilian Astronauts Take Longest Spacewalks",
+    subtitle = "Source: Stavnichuk & Corlett, 2020",
+    caption = "Note: The six countries presented here are the Top 6 Space Exploring Countries."
+  ) + 
+  theme(text=element_text(family="Times New Roman", face="bold", size=12)) + 
+    theme(axis.text.x = element_text(face="bold", color="black", 
+                           size=8),
+          axis.text.y = element_text(face="bold", color="black", 
+                           size=8))
+```
+
+```{r Question 4 Visualization 2}
+ggplot(nationality_top9_4) + 
+  geom_tile(aes(x = nationality, y = military_civilian, fill = age_mission)) +
+  scale_fill_gradient(low = "#0072B2", high = "#CC79A7", na.value = "grey50") + 
+  theme(legend.position="top") +
+  theme(panel.grid=element_line(colour="white"), panel.background = element_rect(fill="white")) + 
+       labs(
+    x = "Nationality of Astronaut",
+    y = "Mission Type",
+    fill = "Age of Astronaut at the Point of Mission",
+    title = "Age of Astronauts from Top Space Exploring Countries, by Mission Type",
+    subtitle = "Source: Stavnichuk & Corlett, 2020",
+    caption = "Note: The nine countries presented are the Top 9 Space Exploring Countries. Uncoloured boxes reflect 0 missions of that type."
+  ) + 
+  theme(text=element_text(family="Times New Roman", face="bold", size=12)) + 
+    theme(axis.text.x = element_text(face="bold", color="black", 
+                           size=8),
+          axis.text.y = element_text(face="bold", color="black", 
+                           size=8))
+```
+
+```{r Question 4 Visualization 3}
+ggplot(df4) + 
+  geom_point(aes(x = year_of_mission, y = duration_spacewalk, color =number_spacewalk, position = 'dodge')) +
+    labs(
+    x = "Year of Mission",
+    y = "Total Duration of Spacewalks in Space Career",
+    color = "Total Spacewalks in Space Career",
+    title = "Astronauts are Taking Longer (and More) Spacewalks",
+    subtitle = "Source: Stavnichuk & Corlett, 2020") + 
+  scale_color_gradient(low = "#0072B2", high = "#CC79A7") +
+  theme(legend.position="top") +
+  theme(panel.grid=element_line(colour="white"), panel.background = element_rect(fill="white")) + 
+  theme(text=element_text(family="Times New Roman", face="bold", size=12)) + 
+    theme(axis.text.x = element_text(face="bold", color="black", 
+                           size=8),
+          axis.text.y = element_text(face="bold", color="black", 
+                           size=8))
+```
+
+I recommend the third plot in this segment, the scatter plot titled `Astronauts are Taking Longer (and More) Spacewalks` to the editor. This clearly coveys a single point, both by the position of the points and by color -- that more Spacewalks are being taken in more recent years. This is conveyed by the position of the points and by the increasing pink color towards the right of the graph. I believe that the inclusion of total spacewalks as color further enhances this point  This insight is succinctly captured in the title too.
+
+### 5. Interactivity
+
+Choose 2 of the plots you created above and add interactivity. For at least one of these interactive plots, this should not be done through the use of `ggplotly`. Briefly describe to the editor why interactivity in these visualizations is particularly helpful for a reader.
+
+```{r Question 5 Visualization 1}
+ggplotly(military_civilian)  %>%
+  layout(annotations = 
+ list(x = 0.01, y = 1.03, text = "<b>Source: Stavnichuk & Corlett, 2020<b>", 
+      showarrow = F, xref='paper', yref='paper', 
+      xanchor='auto', yanchor='auto', xshift=0, yshift=0,
+      font=list(size=15)))
+```
+
+This plot was first generated above for Question 2. 
+
+Interactivity enhances the interface of this graph; the non-interactive visual of the graph provides a broad overview of the position of the years. But now the end-user can get information on the exact years that each country presented here had space missions. 
+
+Additionally, if they so choose, they can toggle the graph to display civilian or military missions only. 
+
+```{r Question 5 Visualization 2}
+#plot.ly plot#
+fig = plot_ly(df4, y = ~duration_spacewalk, x=~year_of_mission, color = ~number_spacewalk, colors = "YlOrRd", type = "scatter", mode = "markers", textposition = "top right", hoverinfo = 'text', text = ~paste('</br> Number of Spacewalks: ', number_spacewalk,
+                      '</br> Year of Mission: ', year_of_mission,
+                      '</br> Duration of Total Spacewalk Throughout Career: ', duration_spacewalk)) %>%
+  layout(xaxis = list(showgrid = F),
+         yaxis = list(showgrid = F))
+fig <- fig %>%
+  layout(title = "<b>Astronauts are Taking Longer (and More) Spacewalks<b>",
+         xaxis = list(title = "<b>Year of Mission<b>"),
+         yaxis = list(title = "<b>Total Duration of Spacewalks in Entire Space Career<b>"))
+
+fig %>%
+  layout(legend=list(title=list(text='<b>No. Spacewalks<b>'))) %>%
+  layout(annotations = 
+ list(x = 0.02, y = 1.03, text = "<b>Source: Stavnichuk & Corlett, 2020<b>", 
+      showarrow = F, xref='paper', yref='paper', 
+      xanchor='auto', yanchor='auto', xshift=0, yshift=0,
+      font=list(size=15))
+ )
+
+```
+
+This plot was first generated above for Question 4. 
+
+Interactivity enhances the interface of this graph; the non-interactive visual of the graph provides a broad overview of the ages of the astronauts. But now the end-user can get information on the exact years that each astronaut presented here had space missions with spacewalks, and how numerous these opportunities are. 
+
+### 6. Data Table
+
+To allow the reader to explore the record holding achievements of astronauts, aggregate the data by astronaut. Include the total number of missions, the total mission time, and anything else you consider useful to share and add a data table to the output. Make sure the columns are clearly labeled. Select the appropriate options for the data table (e.g. search bar, sorting, column filters, in-line visualizations etc.). Suggest to the editor which kind of information you would like to provide in a data table and why.
+
+```{r Question 6 Table}
+df6 <- df %>%
+  group_by(number) %>%
+  summarize(name, nationality, age_during_mission = year_of_mission - year_of_birth, mission_number, total_number_of_missions = total_number_of_missions, total_hors_spent_in_space = total_hrs_sum, number_of_spacewalks = eva_instances, duration_of_spacewalks = total_eva_hrs) %>% #create new vars#
+  filter(age_during_mission >= 0)
+
+pretty_headers <- 
+  gsub("[_]", " ", colnames(df6)) %>%
+  str_to_title()
+
+df6 %>%
+  datatable(
+    rownames = FALSE,
+    colnames = pretty_headers,
+    filter = list(position = "top"),
+    options = list(language = list(sSearch = "Filter:"))
+  )
+```
+
+As a recommendation to the Editor, I would definitely suggest including potential identifier variables ('keys') for each observation, like `Number` and `Name` of Astronaut. This can be followed by demographic information like `Nationality` and `Age During Mission`. 
+
+I would also recommend including interesting information to end users, related to each Astronauts' work, like the number of missions they went on (`Mission Number`), `Total Number of Missions`, `Total Hours Spent in Space`, as well as the `Number and Duration of their Spacewalks`.
+
+The end user should be able to freely interact with the information, so bars in each column allowing them to filter information easily, a search bar and a page navigation interface are absolutely essential. 
+
