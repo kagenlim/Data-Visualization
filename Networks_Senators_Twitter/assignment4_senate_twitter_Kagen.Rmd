@@ -1,0 +1,440 @@
+---
+title: "U.S. Senator Networks on Twitter"
+author: Kagen Lim
+date: 2021-04-08
+always_allow_html: yes
+output: 
+  html_document:
+    keep_md: true
+---
+
+Network Analysis of U.S. Senate Tweets
+================================
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Overview
+
+Twitter is a great tool to analyze the public interactions of political actors. For this assignment, I want you to use the information about who follows whom on Twitter as well as past tweets of the current U.S. Senate members to analyze how they interact and what they tweet about. 
+
+## Data
+
+#### Twitter Handles of Senators
+
+Twitter does not allow us to search for past tweets (beyond about a week back) based on keywords, location, or topics (hashtags). However, we are able to obtain the past tweets of users if we specify their Twitter handle. The file `senators_twitter.csv` contains the Twitter handles of the current U.S. Senate members (obtained from [UCSD library](https://ucsd.libguides.com/congress_twitter/senators)). We will focus on the Senators' _official Twitter accounts_ (as opposed to campaign or staff members). The data also contains information on the party affiliation of the Senators.
+
+#### Followers
+
+The file `senators_follow.csv` contains an edge list of connections between each pair of senators who are connected through a follower relationship (this information was obtained using the function `rtweet::lookup_friendships`). The file is encoded such that the `source` is a follower of the `target`. You will need to use the subset of `following = TRUE` to identify the connections for which the `source` follows the `target`.
+
+#### Tweets by Senators
+
+Helper Code for Twitter Data:
+
+```{r, eval=FALSE}
+library(tidyverse)
+library(lubridate)
+library(rtweet)
+
+# Read in the Tweets
+senator_tweets <- readRDS("senator_tweets.RDS")
+
+# How limiting is the API limit?
+senator_tweets %>%
+  group_by(screen_name) %>%
+  summarize(n_tweet = n(),
+            oldest_tweet = min(created_at)) %>%
+  arrange(desc(oldest_tweet))
+```
+
+The data contains about 280k tweets and about 90 variables. Please note, that the API limit of 3,200 tweets per twitter handle actually cuts down the time period we can observe the most prolific Twitter users in the Senate down to only about one year into the past.
+
+## Tasks for the Assignment
+
+### 1. Who follows whom?
+
+#### a) Network of Followers
+
+Read in the edgelist of follower relationships from the file `senators_follow.csv`. 
+
+Create a directed network graph. Identify the three senators who are followed by the most of their colleagues (i.e. the highest "in-degree") and the three senators who follow the most of their colleagues (i.e. the highest "out-degree"). [Hint: You can get this information simply from the data frame or use `igraph` to calculate the number of in and out connections: `indegree = igraph::degree(g, mode = "in")`.] 
+
+Visualize the network of senators. In the visualization, highlight the party ID of the senator nodes with an appropriate color (blue = Democrat, red = Republican) and size the nodes by the centrality of the nodes to the network. Briefly comment.
+
+```{r}
+library(ggraph)
+library(igraph)
+library(dplyr)
+
+senator_edgelist <- readr::read_csv("senators_follow.csv")
+
+senator_following_edgelist = senator_edgelist %>%
+  select(source, target, following) %>%
+  filter(following == T)
+
+following = graph_from_data_frame(senator_following_edgelist, directed=T)
+
+indegree = igraph::degree(following, mode = "in") 
+
+head(sort(indegree, decreasing = T), 3) #most followed by other senators
+
+outdegree = igraph::degree(following, mode = "out") 
+
+head(sort(outdegree, decreasing = T), 3) #follows most other senators
+```
+
+
+```{r}
+#merge senate with the edgelist
+# Read in the Senator Data
+senate <- readr::read_csv("senators_twitter.csv")
+head(senate)
+
+senate_tomerge = senate %>%
+  rename(
+    source = twitter_handle
+  )
+
+senate_toplot = left_join(senator_following_edgelist, senate_tomerge, by = 'source')
+
+head(senate_toplot)
+
+unique(senate_toplot$party) #expect three different colors
+
+#to get edge colors correct
+senate_toplot$party <- ifelse(senate_toplot$party == "D", "blue", senate_toplot$party )
+
+senate_toplot$party <- ifelse(senate_toplot$party == "R", "red", senate_toplot$party)
+
+senate_toplot$party <- ifelse(senate_toplot$party == "I", "green", senate_toplot$party)
+
+senate_toplot$party <- factor(senate_toplot$party)
+
+unique(senate_toplot$party) #expect three different colors
+
+#now to get the nodes in the correct color
+following_party = graph_from_data_frame(senate_toplot, directed=T)
+
+library(tidygraph)
+
+graph_tbl <- following_party %>%
+  as_tbl_graph() %>%
+  activate(nodes) %>%
+  mutate(size = centrality_degree())
+
+layout <- create_layout(graph_tbl, layout = 'igraph', algorithm = 'kk')
+
+#need to re-merge because this new layour object does not have party any longer
+senate_tomerge = senate %>%
+  rename(
+    name = twitter_handle
+  )
+
+layout_toplot = left_join(layout, senate_tomerge, by = 'name')
+
+cols = c("D" = "dodgerblue", "R" = "red4", "I" = "springgreen")
+
+#now to plot
+ggraph(layout_toplot) +
+  geom_edge_fan(aes(color = party, alpha = 0.001), show.legend = F) +
+  scale_edge_color_identity(guide = "legend") + 
+  geom_node_point(aes(size = size, color = as.factor(party)), show.legend = F) +
+     scale_color_manual(
+    values = cols
+    ) + 
+    theme_graph(fg_text_colour = 'white') + 
+  labs(
+    title = "US Senator Accounts Following Each Other on Twitter",
+    subtitle = "Red = Rep.; Blue = Dem.; Green = Indp."
+  )
+```
+
+This graph seems to suggest some degree of polarization, as senators often follow senators from their own party, but less so senators from another party. Independent senators more closely associated with democratic senators. 
+
+#### b) Communities
+
+Now let's see whether party identification is also recovered by an automated mechanism of cluster identification. Use the `cluster_walktrap` command in the `igraph` package to find densely connected subgraphs. 
+
+Based on the results, visualize how well this automated community detection mechanism recovers the party affiliation of senators. This visualization need not be a network graph. Comment briefly.
+
+```{r}
+following_party
+```
+
+```{r}
+library(igraph)
+
+wc <- cluster_walktrap(following_party)  # find "communities"
+
+community_id <- wc$membership
+
+twitter_handle <- as_ids(V(following_party))
+
+vcom <- data.frame(twitter_handle,community_id)
+
+senator_communities = left_join(vcom, senate, by = 'twitter_handle')
+
+senator_communities_party <- senator_communities %>%
+  group_by(community_id) %>%
+  count(party)
+```
+
+```{r}
+ggplot(senator_communities_party) +
+  geom_tile(aes(x = as.factor(community_id), y = party, fill=n)) + 
+   scale_fill_gradient(low = "light blue", high = "#0072B2") + 
+  labs(
+    x = "Community Group",
+    y = "Party",
+    fill = "Number of \nSenators ",
+    title = "Republican and Democrat-Independent Divide",
+    subtitle = "These inferences were made based on the fellow Senators that individual Senators follow on Twitter.",
+    caption = "Note: White Spaces denote that no Senators from that party belong to that Community Group."
+  ) + 
+   ggthemes::theme_tufte()
+```
+
+### 2. What are they tweeting about?
+
+From now on, rely on the information from the tweets stored in `senator_tweets.RDS`.
+
+#### a) Most Common Topics over Time
+
+Remove all tweets that are re-tweets (`is_retweet`) and identify which topics the senators tweet about. Rather than a full text analysis, just use the variable `hashtags` and identify the most common hashtags over time. Provide a visual summary.
+
+```{r}
+senator_tweets <- readRDS("senator_tweets.RDS")
+unique(senator_tweets$is_retweet) #character not boolean
+
+senator_tweets_no_retweets <- senator_tweets %>%
+  filter(!is_retweet == 'TRUE')
+
+unique(senator_tweets_no_retweets$is_retweet) #subset successful
+
+length(unique(senator_tweets_no_retweets$hashtags)) #that's a lot of hastags
+
+senator_tweets_no_retweets$hashtags[0:20] #tweets have more than one hashtag
+```
+
+```{r}
+library(tidyr)
+
+expand_senator_tweets_no_retweets <- senator_tweets_no_retweets %>%
+  tidyr::separate_rows(hashtags)
+
+unique(expand_senator_tweets_no_retweets$hashtags)[0:20] #much better
+
+#now for time
+expand_senator_tweets_no_retweets$year <- format(as.POSIXct(expand_senator_tweets_no_retweets$created_at), "%Y")
+
+unique(expand_senator_tweets_no_retweets$year)[0:20] #nice
+
+table(expand_senator_tweets_no_retweets$year) #definitely more from recent years
+
+expand_senator_tweets_no_retweets$year <- ifelse(expand_senator_tweets_no_retweets$year<=2015, '2015 and Before', expand_senator_tweets_no_retweets$year)
+
+expand_senator_tweets_no_retweets$year <- ifelse(expand_senator_tweets_no_retweets$year>=2016 & expand_senator_tweets_no_retweets$year<2018, '2016-2017', expand_senator_tweets_no_retweets$year)
+
+expand_senator_tweets_no_retweets$year <- ifelse(expand_senator_tweets_no_retweets$year>=2018 & expand_senator_tweets_no_retweets$year<2020, '2018-2019', expand_senator_tweets_no_retweets$year)
+
+table(expand_senator_tweets_no_retweets$year) #slightly more balanced
+
+top_hashtags <- expand_senator_tweets_no_retweets %>%
+  group_by(hashtags) %>% #counting individual hashtags
+  count() %>%
+  arrange(desc(n)) %>%
+  head(10) #first three don't mean anything
+
+top_hashtags_meaningful <- top_hashtags[4:10, ]
+
+hashtags_overtime <- expand_senator_tweets_no_retweets %>%
+  filter(hashtags %in% top_hashtags_meaningful$hashtags) %>%
+  drop_na(year) %>%
+  ggplot(.) +
+  geom_bar(aes(x = hashtags, fill = year)) +
+  labs(
+    x = 'Hashtags',
+    y = 'Count',
+    title= 'US Senator Hastags on Twitter over Time'
+  ) +
+  theme(legend.title = 'Time Period') + 
+  ggthemes::theme_tufte()
+
+hashtags_overtime
+```
+
+### 3. Are you talking to me?
+
+Often tweets are simply public statements without addressing a specific audience. However, it is possible to interact with a specific person by adding them as a friend, becoming their follower, re-tweeting their messages, and/or mentioning them in a tweet using the `@` symbol.  
+
+#### a) Identifying Re-Tweets
+
+Select the set of re-tweeted messages from other senators and identify the source of the originating message. Calculate by senator the amount of re-tweets they received and from which party these re-tweets came. Essentially, I would like to visualize whether senators largely re-tweet their own party colleagues' messages or whether there are some senators that get re-tweeted on both sides of the aisle. Visualize the result and comment briefly. 
+
+```{r}
+senator_tweets_retweets <- senator_tweets %>%
+  filter(is_retweet == 'TRUE')
+
+#colnames(senator_tweets_retweets) #retweet_screen_name is what we want
+
+fellow_senator_tweets_retweets <- senator_tweets_retweets %>%
+  filter(retweet_screen_name %in% senate$twitter_handle) #this gives us senators retweeting other senators only
+
+fellow_senator_tweets_retweets <- fellow_senator_tweets_retweets %>%
+  rename(
+   twitter_handle = screen_name
+  )
+
+fellow_senator_tweets_retweets_party <- left_join(fellow_senator_tweets_retweets, senate, by='twitter_handle')
+
+#colnames(fellow_senator_tweets_retweets_party)
+
+myvars <- c('twitter_handle', 'retweet_screen_name','party')
+
+sub_fellow_senator_tweets_retweets_party <- fellow_senator_tweets_retweets_party[myvars] #dataframe is getting a little unwiedly in size
+
+sub_fellow_senator_tweets_retweets_party <- sub_fellow_senator_tweets_retweets_party %>%
+  rename(
+    retweeter = twitter_handle,
+    twitter_handle = retweet_screen_name,
+    retweeter_party = party
+  )
+
+glimpse(sub_fellow_senator_tweets_retweets_party)
+
+senator_retweeted_identity <- left_join(sub_fellow_senator_tweets_retweets_party, senate, by='twitter_handle')
+
+glimpse(senator_retweeted_identity)
+
+senator_retweeted_identity$senator <- senator_retweeted_identity$state <- NULL
+
+senator_retweeted_complete <- senator_retweeted_identity %>%
+  rename(
+    retweeted = twitter_handle,
+    retweeted_party = party
+  )
+
+#Calculate by senator the amount of re-tweets they received and from which party these re-tweets came
+
+senators_got_retweeted <- as.data.frame(table(senator_retweeted_complete$retweeted))
+
+senators_got_retweeted <- senators_got_retweeted %>%
+  rename(
+    retweeted = Var1
+  )
+
+senators_got_retweeted_party <- left_join(senators_got_retweeted, senator_retweeted_complete, by='retweeted')
+
+#I am not going to include Independent Senators for this question
+senators_got_retweeted_party$party_lines <- ifelse(senators_got_retweeted_party$retweeter_party == 'D' & senators_got_retweeted_party$retweeted_party == 'D', 'D Retweets D', 0) 
+
+senators_got_retweeted_party$party_lines <- ifelse(senators_got_retweeted_party$retweeter_party == 'R' & senators_got_retweeted_party$retweeted_party == 'R', 'R Retweets R', senators_got_retweeted_party$party_lines)
+
+senators_got_retweeted_party$party_lines <- ifelse(senators_got_retweeted_party$retweeter_party == 'R' & senators_got_retweeted_party$retweeted_party == 'D', 'R Retweets D', senators_got_retweeted_party$party_lines)
+
+senators_got_retweeted_party$party_lines <- ifelse(senators_got_retweeted_party$retweeter_party == 'D' & senators_got_retweeted_party$retweeted_party == 'R', 'D Retweets R', senators_got_retweeted_party$party_lines)
+
+glimpse(senators_got_retweeted_party)
+
+retweets_senators <- senators_got_retweeted_party %>%
+  filter(!party_lines == 0) %>% #some party information seems to be missing
+  ggplot(.) +
+  geom_bar(aes(x=party_lines)) +
+  ggthemes::theme_tufte() +
+  labs(
+    x = 'Who Retweets Who', 
+    y = 'Number of Retweets',
+    title = 'Senators Tend to Retweet Colleagues from their Own Party'
+  )
+
+retweets_senators
+```
+
+It seems that senators tend to retweet colleagues from their own party; with a minority that retweet across the aisle. From a raw count, Democratic Senators tend to do this more than Republican Senators; but it could be because they are more active on Twitter. 
+
+#### b) Identifying Mentions
+
+Identify the tweets in which one senator mentions another senator directly (the variable is `mentions_screen_name`). For this example, please remove simple re-tweets (`is_retweet == FALSE`). Calculate who re-tweets whom among the senate members. Convert the information to an undirected graph object in which the number of mentions is the strength of the relationship between senators. Visualize the network graph using the party identification of the senators as a group variable (use blue for Democrats and red for Republicans) and some graph centrality measure to size the nodes. Comment on what you can see from the visualization.
+
+```{r}
+class(senator_tweets$mentions_screen_name)
+
+unique(senator_tweets$mentions_screen_name)[20:40] #multiple mentions are possible
+
+expand_senator_tweets_mentions <- senator_tweets %>%
+  tidyr::separate_rows(mentions_screen_name) %>%
+  drop_na(mentions_screen_name) %>%
+  filter(as.character(mentions_screen_name) %in% senate$twitter_handle) #this gives us senators mentioning other senators only
+
+unique(expand_senator_tweets_mentions$mentions_screen_name)[20:40] #all good 
+
+exp_senator_tweets_mentions <- expand_senator_tweets_mentions %>%
+  filter(is_retweet=='FALSE') 
+
+exp_senator_tweets_mentions <- exp_senator_tweets_mentions %>%
+  rename(
+    twitter_handle = screen_name
+  )
+
+exp_senator_tweets_mentions_party <- left_join(exp_senator_tweets_mentions, senate, by='twitter_handle')
+
+myvars <- c('twitter_handle', 'mentions_screen_name', 'party')
+
+for_mentions_edgelist <- exp_senator_tweets_mentions_party[myvars]
+
+for_mentions_edgelist <- for_mentions_edgelist %>%
+  rename(
+    source = twitter_handle,
+    target = mentions_screen_name,
+    mentioner_party = party
+  )
+
+number_mentions <- for_mentions_edgelist %>%
+  group_by(source, target) %>%
+  count()
+
+for_mentions_edgelist_w_number <- left_join(for_mentions_edgelist, number_mentions, by=c('source' = 'source', 'target' = 'target'))
+
+head(for_mentions_edgelist_w_number)
+```
+
+```{r,warning=FALSE,fig.width=10,fig.height=10}
+mentions_party <- graph_from_data_frame(for_mentions_edgelist_w_number, directed=F)
+
+mentions_party <- igraph::simplify(mentions_party, edge.attr.comb="min")
+
+library(tidygraph)
+
+graph_mentions<- mentions_party %>%
+  as_tbl_graph() %>%
+  activate(nodes) %>%
+  mutate(size = centrality_degree()) 
+
+#mentions_layout <- create_layout(graph_mentions, layout = 'igraph', algorithm = 'kk')
+
+senate_tomerge_mentions = senate %>%
+  rename(
+    name = twitter_handle
+  )
+
+mentions_layout = left_join(graph_mentions, senate_tomerge_mentions, by = 'name')
+
+cols = c("D" = "dodgerblue", "R" = "red4", "I" = "springgreen")
+
+#now to plot
+ggraph(mentions_layout, layout = 'kk', maxiter=1000) +
+  geom_edge_link(aes(width = n, alpha = 0.5), show.legend = F) +
+  geom_node_point(aes(size = size, color = as.factor(party)), show.legend = F) +
+     scale_color_manual(
+    values = cols
+    ) + 
+    theme_graph(fg_text_colour = 'white', title_size = 30, subtitle_size = 20, caption_size = 20) +
+ labs(
+   title = "US Senators' Mentions of Other Senators on Twitter",
+    subtitle = "Red = Rep.; Blue = Dem.; Green = Indp."
+  ) 
+```
+
+It seems like senators who are less central in this network also mention others less. Interestingly, senators who are less central in this network also seem to mention politicians from another party less often. There also seems to be a relatively clean grouping of senators by party, which indicates that senators tend to, more often, mention fellow senators from their own party. 

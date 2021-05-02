@@ -1,5 +1,5 @@
 ---
-title: "Assignment 3: Kickstarter Projects"
+title: "Visualizing Kickstarter Text Data"
 author: Kagen Lim
 date: 2021-03-25 
 always_allow_html: yes

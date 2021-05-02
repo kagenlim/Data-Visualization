@@ -1,0 +1,11 @@
+name: Publish Document
+title:
+username:
+account: rpubs
+server: rpubs.com
+hostUrl: rpubs.com
+appId: https://api.rpubs.com/api/v1/document/761487/8fef7abb6621451eab0aab4cb8d5b080
+bundleId: https://api.rpubs.com/api/v1/document/761487/8fef7abb6621451eab0aab4cb8d5b080
+url: http://rpubs.com/kagen/761487/edit
+when: 1619571419.3087
+lastSyncTime: 1619571419.30871

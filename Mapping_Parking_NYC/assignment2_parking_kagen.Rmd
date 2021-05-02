@@ -1,5 +1,5 @@
 ---
-title: "Assignment 2: Mapping Parking Violations in NYC"
+title: "Mapping Traffic Violations Data NYC"
 author: Kagen Lim
 date: 2021-03-19
 always_allow_html: yes
@@ -17,6 +17,8 @@ knitr::opts_chunk$set(echo = TRUE)
 #save.image(file='assignment2.RData')
 
 #load('assignment2.RData')
+
+getwd()
 ```
 
 ## Data
@@ -43,7 +45,7 @@ A second data source is the [shape files of police precincts in NYC](https://www
 Before focusing on the spatial part of the data, let's explore the basic patterns in the data. 
 
 ```{r}
-df <- read.csv('/Users/kagenlim/Documents/Data Viz/07_parking-graded/data/parking/parkingNYC_Jan2020-Jan2021.csv')
+df <- read.csv('./data/parking/parkingNYC_Jan2020-Jan2021.csv')
 ```
 
 
@@ -62,7 +64,7 @@ Add the violation code descriptions and fine amounts to the data file. Provide a
 ```{r}
 library(readxl)
 
-violation_labels <- read_excel('/Users/kagenlim/Documents/Data Viz/07_parking-graded/data/parking/ParkingViolationCodes_January2020.xlsx')
+violation_labels <- read_excel('./data/parking/ParkingViolationCodes_January2020.xlsx')
 
 library(tidyverse)
 
