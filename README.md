@@ -10,4 +10,4 @@ Text Data: https://rpubs.com/kagen/kickstarter_text
 
 Networks Data: https://rpubs.com/kagen/sentwitter_networks
 
-The source code for these projects are in the respective folders above. 
+Great visualizations are made possible by thoughtful, targeted data wrangling. While I hope to get a lot better at this, the source code for these projects I have now are in the respective folders above. 
